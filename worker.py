@@ -153,16 +153,18 @@ def evaluate(env, network, num_play=3000, eps=0.0):
         last_features = network.get_initial_features()
         last_meta = None if not hasattr(env, 'meta') else env.meta()
         plan_counter=0
+        prediction_step=3
         while True:
             temp_random=False
-
-            if eps == 0.0 or np.random.rand() > eps and (plan_counter%prediction_step==0):
-                fetched = network.act(last_state, last_features,
-                        meta=last_meta)
-                if network.type == 'policy':
-                    action, features = fetched[0], fetched[2:]
-                else:
-                    temp_action, features = fetched[0], fetched[1:]
+            temp_action=[None]*prediction_step
+            if eps == 0.0 or np.random.rand() > eps:
+                if plan_counter%prediction_step==0:
+                    fetched = network.act(last_state, last_features,
+                            meta=last_meta)
+                    if network.type == 'policy':
+                        action, features = fetched[0], fetched[2:]
+                    else:
+                        temp_action, features = fetched[0], fetched[1:]
             else:
                 act_idx = np.random.randint(0, env.action_space.n)
                 action = np.zeros(env.action_space.n)
