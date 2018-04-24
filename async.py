@@ -109,18 +109,20 @@ runner appends the policy to the queue.
         terminal_end = False
         rollout = PartialRollout()
         plan_counter=0
+        temp_action=[None]*prediction_step
         for _ in range(num_local_steps):
             value = None
             temp_random=False
             # choose an action from the policy
-            if (not hasattr(solver, 'epsilon') or solver.epsilon() < np.random.uniform()) and plan_counter%prediction_step==0:
+            if (not hasattr(solver, 'epsilon') or solver.epsilon() < np.random.uniform()):
+                if plan_counter%prediction_step==0:
 
-                fetched = network.act(last_state, last_features,
-                        meta=last_meta)
-                if network.type == 'policy':
-                    action, value, features = fetched[0], fetched[1], fetched[2:]
-                else:
-                    temp_action, features = fetched[0], fetched[1:]
+                    fetched = network.act(last_state, last_features,
+                            meta=last_meta)
+                    if network.type == 'policy':
+                        action, value, features = fetched[0], fetched[1], fetched[2:]
+                    else:
+                        temp_action, features = fetched[0], fetched[1:]
             
             else: 
                     # choose a random action
