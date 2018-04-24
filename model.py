@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import math
+import time
 
 act_fn = tf.nn.elu
 
@@ -283,7 +284,7 @@ class Model(object):
         self.meta_dim = meta_dim
         self.xdim = list(ob_space)
         self.branch = [min(n_actions, k) for k in branch]
-
+        self.prediction_step=3
         self.s, self.state_in, self.state_out = self.build_model(self.x, self.meta)
         self.sdim = self.s.get_shape().as_list()[1:]
 
@@ -339,6 +340,7 @@ class Model(object):
             v_list = []
             idx_list = []
             s_list = []
+            max_actions=[]
             s = self.s
             
             # Expansion
@@ -365,6 +367,7 @@ class Model(object):
                         tf.reshape(g_list[i], [-1, self.n_actions]), l), [-1])
                 v_list[i] = tf.reshape(tf.gather_nd(
                         tf.reshape(v_list[i], [-1, self.n_actions]), l), [-1])
+                 
 
             self.q_list = q_list
             self.r_list = r_list
@@ -372,23 +375,33 @@ class Model(object):
             self.v_list = v_list
             self.s_list = s_list
             self.idx_list = idx_list
+            self.max_actions=max_actions
+
 
             # Backup
             v_plan = [None] * depth
             q_plan = [None] * depth
+            max_actions=[None] * depth
 
             v_plan[-1] = v_list[-1]
+
             for i in reversed(range(0, depth)):
                 q_plan[i] = r_list[i] + g_list[i] * v_plan[i]
+                max_actions[i]=tf.argmax(q_plan[i],axis=0)%self.n_actions
                 if i > 0:
                     q_max = tf.reduce_max(tf.reshape(q_plan[i], [-1, self.branch[i]]), axis=1)
                     n = float(depth - i)
                     v_plan[i-1] = (v_list[i-1] + q_max * n) / (n + 1)
 
+            print "q_plan________"
+            print q_plan
+            #time.sleep(100)
+
             idx = tf.squeeze(idx_list[0])
             self.q_deep = tf.squeeze(q_plan[0])
+            self.max_actions=tf.sparse_to_dense([0,1,2],[prediction_step],max_actions,default_value=-100)
             self.q_plan = tf.sparse_to_dense(idx, [self.n_actions], self.q_deep, 
-                        default_value=-100, validate_indices=False)
+                       default_value=-100, validate_indices=False)
 
             self.x_off = tf.placeholder(tf.float32, [None] + list(ob_space))
             self.a_off = tf.placeholder(tf.float32, [None, n_actions])
@@ -432,12 +445,17 @@ class Model(object):
         elif self.type == 'q':
             return sess.run([self.sample] + self.state_out, feed_dict)
         elif self.type == 'vpn':
-            out = sess.run([self.q_plan] + self.state_out, feed_dict)
+            out = sess.run([self.max_actions]+self.state_out, feed_dict)
             q = out[0]
-            state_out = out[1:]
-            act = np.zeros_like(q)
-            act[q.argmax()] = 1
-            return [act] + state_out
+	    #print "->>>>>>>>>>>.out:"
+	    #print out
+
+        #temp_actions=np.zeros(self.prediction_step)
+	    
+	    #for i in range (0,self.prediction_step):
+        #    temp_actions[i]=q[i].argmax
+
+        return out
 
     def update_state(self, ob, state_in=[], meta=None):
         sess = tf.get_default_session()
@@ -462,7 +480,7 @@ class Model(object):
             return sess.run(self.qmax, feed_dict)[0]
         elif self.type == 'vpn':
             q = sess.run(self.q_plan, feed_dict)
-            return q.max()
+            return q[0].max()
 
 class CNN(Model):
     def __init__(self, *args, **kwargs):

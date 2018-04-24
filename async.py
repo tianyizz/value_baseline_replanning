@@ -1,4 +1,4 @@
-from __future__ import print_function
+#from __future__ import print_function
 import logging
 import numpy as np
 import tensorflow as tf
@@ -93,7 +93,7 @@ that would constantly interact with the environment and tell it what to do.  Thi
             self.queue.put(next(rollout_provider), timeout=600.0)
 
 
-def env_runner(env, network, num_local_steps, summary_writer, solver=None):
+def env_runner(env, network, num_local_steps, summary_writer, solver=None,prediction_step=3):
     """
 The logic of the thread runner.  In brief, it constantly keeps on running
 the policy, and as long as the rollout exceeds a certain length, the thread
@@ -108,20 +108,22 @@ runner appends the policy to the queue.
     while True:
         terminal_end = False
         rollout = PartialRollout()
-
+        plan_counter=0
         for _ in range(num_local_steps):
             value = None
-            
+            temp_random=False
             # choose an action from the policy
-            if not hasattr(solver, 'epsilon') or solver.epsilon() < np.random.uniform():
+            if (not hasattr(solver, 'epsilon') or solver.epsilon() < np.random.uniform()) and plan_counter%prediction_step==0:
+
                 fetched = network.act(last_state, last_features,
                         meta=last_meta)
                 if network.type == 'policy':
                     action, value, features = fetched[0], fetched[1], fetched[2:]
                 else:
-                    action, features = fetched[0], fetched[1:]
+                    temp_action, features = fetched[0], fetched[1:]
+            
             else: 
-                # choose a random action
+                    # choose a random action
                 assert network.type != 'policy'
                 act_idx = np.random.randint(0, env.action_space.n)
                 action = np.zeros(env.action_space.n)
@@ -131,10 +133,27 @@ runner appends the policy to the queue.
                             meta=last_meta)
                 else:
                     features = []
+                temp_random=True
+
+            #print "temp action all of them....."
+            #print temp_action
+
+            action = np.zeros(env.action_space.n)
+            if not temp_random:
+                action=np.zeros(env.action_space.n)
+                #print "Current temp action is ->>>>>>>>>>>>>>"
+                #print temp_action[plan_counter%prediction_step]
+                action[temp_action[plan_counter%prediction_step]]=1
 
             # argmax to convert from one-hot
-            state, reward, terminal, info = env.step(action.argmax())
-            time = 1
+            if not hasattr(env,'meta'):
+                state,reward,terminal,info=env.step(action.argmax())
+                time=1
+            else:
+                state,reward,terminal,info,time=env.step(action.argmax())	
+		  
+            plan_counter+=1
+
             if hasattr(env, 'atari'):
                 reward = np.clip(reward, -1, 1)
 
@@ -248,7 +267,7 @@ class AsyncSolver(object):
             self.local_steps = 0
     
     def define_summary(self):
-        summary.scalar("model/lr", self.learning_rate)
+        tf.summary.scalar("model/lr", self.learning_rate)
         if hasattr(self.env, 'tf_visualize'):
             tf.summary.image("model/state", self.env.tf_visualize(self.local_network.x), max_outputs=10)
         tf.summary.scalar("gradient/grad_norm", tf.global_norm(self.grads))

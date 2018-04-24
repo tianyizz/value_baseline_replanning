@@ -207,8 +207,12 @@ class VPN(Q):
                 act_idx = np.random.randint(0, env.action_space.n)
                 action = np.zeros(env.action_space.n)
                 action[act_idx] = 1
-                state, reward, terminal, _ = env.step(action.argmax())
-                time = 1
+                
+		if not hasattr(env,'meta'):
+			state, reward, terminal, _ = env.step(action.argmax())
+                	time = 1
+		else:
+			state, reward,terminal,_,time=env.step(action.argmax())
                 self.rand_rollouts.add(state_off, action, reward, time, 
                         meta_off, terminal)
                 state_off = state

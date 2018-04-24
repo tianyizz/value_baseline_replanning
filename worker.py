@@ -12,6 +12,8 @@ from vpn import VPN
 from envs import create_env
 import util
 import numpy as np
+import os
+from gym import wrappers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -22,6 +24,13 @@ def new_env(args):
         str(args.task), 
         args.remotes,
         config=config)
+    if args.env_id=='maze':
+	return env
+
+    path=os.getcwd()+'/tmp/vpn_record_1'
+    if os.path.exists(path):
+	print "removing old directory"+path
+    env=wrappers.Monitor(env,path)
     return env
 
 # Disables write_meta_graph argument, which freezes entire process and is mostly useless.
@@ -143,22 +152,37 @@ def evaluate(env, network, num_play=3000, eps=0.0):
         last_state = env.reset()
         last_features = network.get_initial_features()
         last_meta = None if not hasattr(env, 'meta') else env.meta()
+        plan_counter=0
         while True:
-            if eps == 0.0 or np.random.rand() > eps:
+            temp_random=False
+
+            if eps == 0.0 or np.random.rand() > eps and (plan_counter%prediction_step==0):
                 fetched = network.act(last_state, last_features,
                         meta=last_meta)
                 if network.type == 'policy':
                     action, features = fetched[0], fetched[2:]
                 else:
-                    action, features = fetched[0], fetched[1:]
+                    temp_action, features = fetched[0], fetched[1:]
             else:
                 act_idx = np.random.randint(0, env.action_space.n)
                 action = np.zeros(env.action_space.n)
                 action[act_idx] = 1
                 features = []
+                temp_random=True
 
-            state, reward, terminal, info = env.step(action.argmax())
-            time = 1
+            if not temp_random:
+                action=np.zeros(env.action_space.n)
+                action[temp_action[plan_counter%3]]=1
+
+            # argmax to convert from one-hot
+            if not hasattr(env,'meta'):
+                state,reward,terminal,info=env.step(action.argmax())
+                time=1
+            else:
+                state,reward,terminal,info,time=env.step(action.argmax())
+
+            plan_counter+=1
+
             last_state = state
             last_features = features
             last_meta = None if not hasattr(env, 'meta') else env.meta()
@@ -253,7 +277,7 @@ Setting up Tensorflow for data parallel work
     parser.add_argument('--job-name', default="worker", help='worker or ps')
     parser.add_argument('--num-workers', default=1, type=int, help='Number of workers')
     parser.add_argument('--num-ps', type=int, default=1, help="Number of parameter servers")
-    parser.add_argument('--log', default="/tmp/vpn", help='Log directory path')
+    parser.add_argument('--log', default="/tmp/vpn_2dmaze_nonchange", help='Log directory path')
     parser.add_argument('--env-id', default="maze", help='Environment id')
     parser.add_argument('-r', '--remotes', default=None,
                         help='References to environments to create (e.g. -r 20), '
