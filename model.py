@@ -382,24 +382,49 @@ class Model(object):
             v_plan = [None] * depth
             q_plan = [None] * depth
             max_actions=[None] * depth
+            lower_bound=0
+
 
             v_plan[-1] = v_list[-1]
 
             for i in reversed(range(0, depth)):
                 q_plan[i] = r_list[i] + g_list[i] * v_plan[i]
-                max_actions[i]=tf.argmax(q_plan[i],axis=0)%self.n_actions
+                max_actions[i]=tf.argmax(q_plan[i],axis=0)
                 if i > 0:
                     q_max = tf.reduce_max(tf.reshape(q_plan[i], [-1, self.branch[i]]), axis=1)
                     n = float(depth - i)
                     v_plan[i-1] = (v_list[i-1] + q_max * n) / (n + 1)
 
+
+            #lower_bound=0
+            #temp_act=[None]*self.n_actions
+
+            for i in range(0,depth):
+                if(i>0):
+                    lower_bound=max_actions[i-1]
+                    reshaped_act=tf.reshape(q_plan[i], [-1, self.branch[i]])[lower_bound]
+                    print "Your answer-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+                    shape_counter=reshaped_act.get_shape().as_list()
+
+                    print shape_counter
+                    temp_counter=shape_counter[0]
+
+                    print temp_counter
+                    max_actions[i]=tf.argmax(tf.reshape(q_plan[i], [-1, self.branch[i]])[lower_bound],axis=0)
+
+                else:
+                    max_actions[i]=tf.argmax(q_plan[i],axis=0)
+
+
             print "q_plan________"
             print q_plan
-            #time.sleep(100)
+            print len(branch)
 
             idx = tf.squeeze(idx_list[0])
+            idx_action=np.arange(len(branch))
             self.q_deep = tf.squeeze(q_plan[0])
-            self.max_actions=tf.sparse_to_dense([0,1,2],[prediction_step],max_actions,default_value=-100)
+            self.max_actions=tf.sparse_to_dense(idx_action,[prediction_step],max_actions,default_value=-100)
             self.q_plan = tf.sparse_to_dense(idx, [self.n_actions], self.q_deep, 
                        default_value=-100, validate_indices=False)
 
